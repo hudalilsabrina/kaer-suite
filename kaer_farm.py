@@ -30,7 +30,8 @@ import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, "/root/respan-suite")
+if os.path.isdir("/root/respan-suite"):
+    sys.path.insert(0, "/root/respan-suite")
 
 from kaer_client import KaerClient, KaerError, extract_otp
 from tempmail import TempikClient

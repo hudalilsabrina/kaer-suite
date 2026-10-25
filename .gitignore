@@ -6,3 +6,4 @@ farm.log
 farm_batch*.out
 .session.json
 .env
+dist/
