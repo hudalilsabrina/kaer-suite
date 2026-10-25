@@ -18,11 +18,9 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-if os.path.isdir("/root/respan-suite"):
-    sys.path.insert(0, "/root/respan-suite")
 
-from kaer_client import KaerClient, KaerError, extract_otp, BASE
-from tempmail import TempikClient
+from kaer_client import KaerClient, KaerError, BASE
+from mailbox import open_mailbox
 
 import kaer_farm
 
@@ -45,31 +43,14 @@ def _read_accounts():
 
 
 def cmd_register(args):
-    domain = args.domain or "websurf.web.id"
-    tm = TempikClient()
-    email = tm.create_inbox(domain=domain)
+    box = open_mailbox(proxy=args.proxy, domain=args.domain, provider=args.provider)
+    email = box.address
     print(f"[mail] {email}")
 
     c = KaerClient(proxy=args.proxy)
     print("[code]", c.send_code(email))
 
-    code = None
-    for _ in range(16):
-        time.sleep(3)
-        for m in tm.get_messages(email) or []:
-            subj = m.get("subject") or ""
-            body = ""
-            try:
-                d = tm.get_message_detail(email, m["id"])
-                body = d.get("body_text") or d.get("body_html") or ""
-            except Exception:
-                pass
-            cand = extract_otp(subj) or extract_otp(body)
-            if cand:
-                code = cand
-                break
-        if code:
-            break
+    code = box.wait_for_otp(timeout=90, interval=4)
 
     if not code:
         print("[-] no OTP received")
@@ -156,7 +137,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
 
     r = sub.add_parser("register")
-    r.add_argument("--domain")
+    r.add_argument("--domain", help="only for MAIL_PROVIDER=tempik")
+    r.add_argument("--provider", default=None, help="tempmail_lol (default) or tempik")
     r.add_argument("--proxy", default=None)
     r.add_argument("--no-9router", action="store_true")
     r.set_defaults(fn=cmd_register)

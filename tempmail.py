@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from typing import Optional, List, Dict, Any
 
-TEMPIK_BASE = os.getenv("TEMPIK_BASE", "https://mail.xentranetwork.me/api").rstrip("/")
+TEMPIK_BASE = (os.getenv("TEMPIK_BASE") or "").rstrip("/")
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -20,14 +20,18 @@ UA = (
 )
 
 # Respan accepts corporate / tech domains
-RESPAN_COMPLIANT_DOMAINS = ["fantech.tech", "mediterranean.biz.id", "ngurah.biz.id"]
+# Domains are instance-specific: set TEMPIK_DOMAINS="a.tld,b.tld" for your own host.
+DEFAULT_DOMAINS = [d for d in (os.getenv("TEMPIK_DOMAINS") or "").split(",") if d]
 
 
 class TempikClient:
     """Tempik disposable email API client."""
 
     def __init__(self, base_url: Optional[str] = None):
-        self.base_url = (base_url or TEMPIK_BASE).rstrip("/")
+        base = (base_url or TEMPIK_BASE or "").rstrip("/")
+        if not base:
+            raise ValueError("TEMPIK_BASE is not set (e.g. https://your-host/api)")
+        self.base_url = base
         self.session_id: Optional[str] = None
 
     def _request(self, method: str, path: str, data: Optional[dict] = None) -> Any:
@@ -62,7 +66,8 @@ class TempikClient:
         payload = {}
         if local_part:
             payload["name"] = local_part
-        payload["domain"] = domain or random.choice(RESPAN_COMPLIANT_DOMAINS)
+        if domain or DEFAULT_DOMAINS:
+            payload["domain"] = domain or random.choice(DEFAULT_DOMAINS)
 
         res = self._request("POST", "/inboxes", payload)
         return res.get("address")

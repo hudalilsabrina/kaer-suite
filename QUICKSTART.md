@@ -4,13 +4,16 @@
 
 ```
 kaer-suite/
-├── kaer_client.py   # HTTP client (OTP auth, key minting, chat)
-├── kaer_farm.py     # batch registrar + 9router injector
-├── main.py          # CLI
-├── tempmail.py      # Tempik disposable-inbox client (bundled)
+├── kaer_client.py    # HTTP client (OTP auth, key minting, chat)
+├── kaer_farm.py      # batch registrar + 9router injector
+├── main.py           # CLI
+├── mailbox.py        # abstraksi provider inbox
+├── tempmail_lol.py   # tempmail.lol client (default, publik)
+├── tempmail.py       # client Tempik (opsional, untuk instance sendiri)
 ├── install.sh
 ├── requirements.txt
-└── README.md
+├── README.md
+└── QUICKSTART.md
 ```
 
 Tidak ada credential di dalam paket — `accounts.txt` / `keys.txt` sengaja kosong
@@ -28,17 +31,31 @@ Butuh Python 3.10+ (stdlib saja, tanpa dependency eksternal).
 
 ## 2. Konfigurasi
 
-Variabel opsional:
+Default-nya pakai **tempmail.lol** — tanpa daftar, tanpa captcha, langsung jalan.
 
 | Env | Default | Fungsi |
 |---|---|---|
-| `KAER_PROXY` | `http://127.0.0.1:10801` | proxy keluar untuk signup. **Wajib** untuk volume — tanpa rotasi IP, server balas `429 signup_velocity` setelah ~3 akun per jaringan per hari |
+| `MAIL_PROVIDER` | `tempmail_lol` | `tempmail_lol` (publik) atau `tempik` (host sendiri) |
+| `KAER_PROXY` | *(kosong)* | proxy keluar untuk signup. **Wajib** untuk volume — tanpa rotasi IP, server balas `429 signup_velocity` setelah ~3 akun per jaringan per hari |
+| `KAER_BRIDGE` | `http://127.0.0.1:10801` | endpoint `/__new_session` untuk rotasi rotating-proxy |
 | `9ROUTER_DB` | `/var/lib/9router/db/data.sqlite` | path database 9router |
+| `TEMPIK_BASE` | — | hanya untuk `MAIL_PROVIDER=tempik` |
+| `TEMPIK_DOMAINS` | — | domain untuk tempik, dipisah koma |
 
-Kalau tidak pakai proxy, edit `kaer_farm.py`:
+Pakai proxy:
 
-```python
-PROXY = os.environ.get("KAER_PROXY")   # None = koneksi langsung
+```bash
+export KAER_PROXY=http://127.0.0.1:10801
+python3 kaer_farm.py -n 10
+```
+
+Pakai tempik sendiri:
+
+```bash
+export MAIL_PROVIDER=tempik
+export TEMPIK_BASE=https://host-kamu/api
+export TEMPIK_DOMAINS=domainmu.tld
+python3 kaer_farm.py -n 10
 ```
 
 ## 3. Farm akun
@@ -53,7 +70,7 @@ diinjeksi ke 9router di bawah prefix `kaer`.
 ## 4. Perintah lain
 
 ```bash
-./main.py register          # 1 akun interaktif (tanpa proxy pun bisa)
+./main.py register          # 1 akun interaktif (tempmail.lol, tanpa proxy pun bisa)
 ./main.py login -e <email>  # minta OTP ulang, mint key baru
 ./main.py balance           # daftar akun + credit
 ./main.py models            # status live semua model (OK / off)
@@ -86,7 +103,7 @@ curl http://127.0.0.1:20127/v1/chat/completions \
 | `403 origin required` | header `Origin` hilang | pakai `kaer_client.py`, jangan request manual tanpa `Origin: https://api.kaer.ai` |
 | `429 signup_velocity` | terlalu banyak akun dari 1 IP | rotasi proxy sebelum tiap signup |
 | `503 model_unavailable` | model sedang di-pause upstream | ganti model; cek `./main.py models` |
-| `no OTP` | inbox lambat / domain diblok | ganti domain di `DOMAINS` (`websurf.web.id`, `holysmp.me`, …) |
+| `no OTP` | inbox lambat / email ditolak | tempmail.lol kadang lambat; ulangi. Kalau tetap gagal, coba provider lain lewat `MAIL_PROVIDER` |
 | key hilang | `secret` hanya tampil sekali | `./main.py login -e <email>` untuk mint key baru |
 
 ## 7. Batas Free tier

@@ -160,4 +160,4 @@ def extract_otp(text: str):
 
 if __name__ == "__main__":
     c = KaerClient()
-    print(c.send_code("demo_probe_1122@websurf.web.id"))
+    print(c.send_code("demo_probe_1122@example.com"))

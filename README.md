@@ -2,13 +2,16 @@
 
 Automated account registration, `$10` free-credit harvesting, API-key minting, and **9router** integration for **Kaer AI** ([api.kaer.ai](https://api.kaer.ai)).
 
+Public build — inboxes come from **[tempmail.lol](https://tempmail.lol)**, so it runs with zero setup and no private infrastructure.
+
 ---
 
 ## What it does
 
 - **Email-OTP signup** — no password, no captcha: `POST /api/apiplat/auth/code` → read the 6-digit code from a disposable inbox → `POST /api/apiplat/auth/verify`.
 - **Auto key minting** — `POST /api/apiplat/keys` with `scopes: ["models"]`, then captures the one-time `kaer_live_…` secret.
-- **Residential proxy rotation** — the verify step rate-limits per network (`signup_velocity`), so each signup rotates the exit IP.
+- **Pluggable mailboxes** — `tempmail.lol` by default; point `MAIL_PROVIDER=tempik` at your own host if you have one.
+- **Proxy rotation** — the verify step rate-limits per network (`signup_velocity`), so each signup can rotate its exit IP.
 - **9router injection** — registers a `Kaer` provider node (prefix `kaer`) and drops every harvested key into the pool.
 
 ---
@@ -51,7 +54,41 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Requires the `tempmail.py` helper (Tempik client) and a residential proxy bridge at `127.0.0.1:10801` for volume.
+Python 3.10+. Standard library only — nothing to `pip install`.
+
+---
+
+## Mailbox providers
+
+| `MAIL_PROVIDER` | Needs | Notes |
+|---|---|---|
+| `tempmail_lol` *(default)* | nothing | `api.tempmail.lol`, no signup, no captcha. Inbox lives ~1 hour |
+| `tempik` | `TEMPIK_BASE` (+ `TEMPIK_DOMAINS`) | your own self-hosted instance |
+
+```bash
+# default, public
+python3 kaer_farm.py -n 10
+
+# your own tempik instance
+export MAIL_PROVIDER=tempik
+export TEMPIK_BASE=https://your-host/api
+export TEMPIK_DOMAINS=yourdomain.tld,other.tld
+python3 kaer_farm.py -n 10
+```
+
+---
+
+## Environment
+
+| Var | Default | Purpose |
+|---|---|---|
+| `MAIL_PROVIDER` | `tempmail_lol` | `tempmail_lol` or `tempik` |
+| `KAER_PROXY` | *(none)* | outbound proxy for signup, e.g. `http://127.0.0.1:10801`. Needed for volume |
+| `KAER_BRIDGE` | `http://127.0.0.1:10801` | endpoint hit with `/__new_session` to rotate a rotating-proxy bridge |
+| `9ROUTER_DB` | `/var/lib/9router/db/data.sqlite` | 9router database path |
+| `TEMPIK_BASE` / `TEMPIK_DOMAINS` | — | only for `MAIL_PROVIDER=tempik` |
+
+Without a proxy you get ~3 accounts per network per day before `429 signup_velocity`.
 
 ---
 
@@ -132,10 +169,21 @@ Availability flips — check `./main.py models` before wiring a combo.
 ## Files
 
 ```
-kaer_client.py   # HTTP client: OTP auth, key minting, chat
-kaer_farm.py     # batch registrar + 9router injector
-main.py          # CLI
-accounts.txt     # harvested accounts (gitignored)
-keys.txt         # one key per line (gitignored)
-farm.log         # run log
+kaer_client.py    # HTTP client: OTP auth, key minting, chat
+kaer_farm.py      # batch registrar + 9router injector
+main.py           # CLI
+mailbox.py        # provider abstraction (tempmail_lol | tempik)
+tempmail_lol.py   # api.tempmail.lol client
+tempmail.py       # optional self-hosted tempik client
+accounts.txt      # harvested accounts (gitignored)
+keys.txt          # one key per line (gitignored)
+farm.log          # run log
 ```
+
+---
+
+## Disclaimer
+
+For research and personal experimentation. You are responsible for complying with
+Kaer's Terms of Service and any applicable law. Free credit is one-per-person by
+their rules; mass account creation may get accounts suspended.

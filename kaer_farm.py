@@ -5,12 +5,16 @@ creates an API key per account, and injects them into 9router.
 
 Flow (reverse-engineered from api.kaer.ai):
   1. POST /api/apiplat/auth/code    {"email": ...}
-  2. read 6-digit OTP from the tempik inbox (subject carries the code)
+  2. read 6-digit OTP from the mailbox (subject carries the code)
   3. POST /api/apiplat/auth/verify  {"email","code","agreed":true}  -> cookies
   4. POST /api/apiplat/keys         {"name","scopes":["models"],...} -> kaer_live_...
 
-Residential proxy rotation is required: the verify step enforces
-`signup_velocity` per network (3 new accounts/network/day).
+Mailbox is pluggable (see mailbox.py):
+  MAIL_PROVIDER=tempmail_lol   (default, public, no signup)
+  MAIL_PROVIDER=tempik         (+ TEMPIK_BASE) if you run your own
+
+Residential proxy rotation is required for volume: the verify step enforces
+`signup_velocity` per network (~3 new accounts/network/day).
 
 Usage:
   python3 kaer_farm.py -n 10 --gap 4
@@ -30,15 +34,16 @@ import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-if os.path.isdir("/root/respan-suite"):
-    sys.path.insert(0, "/root/respan-suite")
 
-from kaer_client import KaerClient, KaerError, extract_otp
-from tempmail import TempikClient
+from kaer_client import KaerClient, KaerError
+from mailbox import open_mailbox
 
 PROXY = os.environ.get("KAER_PROXY", "http://127.0.0.1:10801")
-BRIDGE = "http://127.0.0.1:10801"
-DOMAINS = ["websurf.web.id", "holysmp.me", "fantech.tech", "mcgg.me", "xentranetwork.me"]
+BRIDGE = os.environ.get("KAER_BRIDGE", "http://127.0.0.1:10801")
+MAIL_PROVIDER = os.environ.get("MAIL_PROVIDER", "tempmail_lol")
+
+# Only used when MAIL_PROVIDER=tempik; tempmail.lol picks its own domains.
+DOMAINS = [d for d in (os.environ.get("TEMPIK_DOMAINS") or "").split(",") if d]
 
 ACCOUNTS = os.path.join(HERE, "accounts.txt")
 KEYS = os.path.join(HERE, "keys.txt")
@@ -155,9 +160,14 @@ def save_record(email, key, balance):
 # ---------------- register ----------------
 def register_one(idx):
     rotate()
-    domain = random.choice(DOMAINS)
-    tm = TempikClient()
-    email = tm.create_inbox(domain=domain)
+
+    # pick a mailbox provider (public tempmail.lol by default)
+    if MAIL_PROVIDER.lower() in ("tempmail_lol", "lol", "public"):
+        box = open_mailbox(proxy=PROXY, provider="tempmail_lol")
+    else:
+        box = open_mailbox(proxy=PROXY, domain=random.choice(DOMAINS), provider="tempik")
+
+    email = box.address
     log(f"[{idx}] {email}")
 
     c = KaerClient(proxy=PROXY)
@@ -167,27 +177,7 @@ def register_one(idx):
     except KaerError as e:
         return {"email": email, "status": f"code_fail:{e.status}:{e.code}"}
 
-    code = None
-    for _ in range(14):
-        time.sleep(3)
-        try:
-            msgs = tm.get_messages(email)
-        except Exception:
-            msgs = []
-        for m in msgs:
-            subj = m.get("subject") or ""
-            body = ""
-            try:
-                d = tm.get_message_detail(email, m["id"])
-                body = d.get("body_text") or d.get("body_html") or ""
-            except Exception:
-                pass
-            cand = extract_otp(subj) or extract_otp(body)
-            if cand:
-                code = cand
-                break
-        if code:
-            break
+    code = box.wait_for_otp(timeout=70, interval=4)
 
     if not code:
         return {"email": email, "status": "no_otp"}
