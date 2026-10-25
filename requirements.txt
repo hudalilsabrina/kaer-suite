@@ -1,0 +1,1 @@
+# stdlib only; tempmail helper is vendored from respan-suite

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+accounts.txt
+keys.txt
+farm.log
+farm_batch*.out
+.session.json
+.env
